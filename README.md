@@ -1,72 +1,72 @@
 # InputMonitor
 
-Windows tuş kaydı: düşük seviye klavye kancası + isteğe bağlı pano takibi. Tek dosya motor (`input_monitor.py`), üstünde Tkinter kontrol paneli (`input_monitor_ui.py`). Harici bağımlılık yok.
+Windows input monitoring built on a low-level keyboard hook, with optional clipboard capture. The engine is a single module (`input_monitor.py`); a Tkinter control panel (`input_monitor_ui.py`) sits on top. Standard library only, no external dependencies.
 
-Ad, aracın kullanım amacını yansıtır: kurumsal/kişisel cihazlarda **girdi izleme** — kendi makinenizde, yetkiniz dahilindeki süreçlerin klavye/pano hareketlerini kaydetmek, sonra incelemek veya dışa aktarmak için. Kayıt tamamen yereldir; hiçbir ağ bağlantısı kurulmaz.
+The name reflects the intended use: **input monitoring** on machines you own or administer — recording keyboard and clipboard activity for later review or export. Everything stays local; the tool makes no network connections.
 
-## Hızlı başlangıç
+## Quick start
 
 ```bat
-:: paneli aç
+:: open the control panel
 pythonw input_monitor_ui.py
 
-:: panel olmadan, arka planda
-pythonw input_monitor.py --log C:\logs\keys.txt
+:: run headless, in the background
+pythonw input_monitor.py --log C:\logs\inputs.txt
 ```
 
-Panelden yapabildikleriniz:
+What the panel gives you:
 
-- **Başlat / Durdur** (veya `F5`) — kancayı açar/kapatır; ayarlar yalnızca durmuşken değiştirilebilir.
-- **Canlı kayıt** — dosya 400 ms'de bir okunur, otomatik kaydırma kapatılabilir, görünüm 3000 satırla sınırlıdır (dosya sınırsız büyür).
-- **Temizle** (`Ctrl+L`) — kayıt dosyasını boşaltır; kayıt sürerken de çalışır.
-- **Gözat / Dışa aktar / Klasörü aç** — dosya yolu seçimi, anlık kopya, Explorer'da açma.
-- **Oturum açılışında başlat** — `HKCU\...\Run` kaydını ekler/kaldırır, sonucu geri okuyup doğrular.
-- Üst şerit: durum, geçen süre, tuş sayısı, dosya boyutu. Alt şerit: pid, kanca durumu.
+- **Start / Stop** (or `F5`) — installs or removes the hook. Settings can only be changed while capture is stopped.
+- **Live log** — the file is polled every 400 ms, auto-scroll can be turned off, and the view is capped at 3000 lines (the file itself grows without limit).
+- **Clear** (`Ctrl+L`) — empties the log file; works while capture is running.
+- **Browse / Export / Open folder** — pick the log path, copy a snapshot, reveal it in Explorer.
+- **Start at logon** — writes or removes the `HKCU\...\Run` entry, then reads it back to verify.
+- Top strip: state, elapsed time, keystroke count, file size. Bottom strip: pid and hook state.
 
-Panelin kendi penceresine yazılan tuşlar varsayılan olarak **yoksayılır** ("Kendi penceremdeki tuşları yoksay"), böylece paneli kullanırken kayıt kirlenmez.
+Keystrokes typed into the panel itself are ignored by default ("Ignore keys typed into my own windows"), so operating the panel does not pollute the log.
 
-## Komut satırı
+## Command line
 
-| Bayrak | Etki |
+| Flag | Effect |
 | --- | --- |
-| `--log PATH` | Kayıt dosyası (varsayılan: betiğin yanındaki `input-monitor.log`). |
-| `--clipboard` | Pano değişikliklerini de yaz (`[CLIPBOARD] ...`, 4000 karakterde kırpılır). |
-| `--no-window` | Düz kayıt: pencere/uygulama başlığı ve boşta ayırıcı yok. |
-| `--include-injected` | `SendInput`/`keybd_event` ile üretilen sentetik girdiyi de kaydet. |
-| `--exclude-self` | Bu sürecin pencerelerine yazılan tuşları yoksay. |
-| `--idle N` | Boşta ayırıcı eşiği, saniye (varsayılan 120). |
-| `--duration N` | N saniye sonra çık (test için). |
-| `--install` / `--uninstall` | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\<ad>` kaydını yönet. |
-| `--name VALUE` | Otomatik başlatma değer adı (varsayılan `InputMonitor`). |
-| `--debug` | Kanca geri çağrısındaki hataları stderr'e yaz. |
+| `--log PATH` | Log file (default: `input-monitor.log` next to the script). |
+| `--clipboard` | Also record clipboard changes (`[CLIPBOARD] ...`, truncated at 4000 chars). |
+| `--no-window` | Flat log: no window/process headers and no idle separators. |
+| `--include-injected` | Also record synthetic input from `SendInput` / `keybd_event`. |
+| `--exclude-self` | Ignore keys typed into this process's own windows. |
+| `--idle N` | Idle separator threshold in seconds (default 120). |
+| `--duration N` | Exit after N seconds (useful for testing). |
+| `--install` / `--uninstall` | Manage `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\<name>`. |
+| `--name VALUE` | Autostart value name (default `InputMonitor`). |
+| `--debug` | Print hook callback exceptions to stderr. |
 
-Eşzamanlılık: komut satırı sürümü `Global\im_{…}`, panel `Global\imui_{…}` mutex'ini tutar. Panel kayıt başlatırken arka plandaki oturumu fark eder ve mükerrer yazmayı önlemek için uyarır; kayıt sırasında `Global\im_{…}` mutex'ini kendisi alır, böylece otomatik başlatma aynı anda ikinci bir kanca açamaz.
+Concurrency: the headless tool holds `Global\im_{…}` and the panel holds `Global\imui_{…}`. When starting capture, the panel notices an already-running background session and warns about duplicate writes; while recording it takes `Global\im_{…}` itself, so the autostart instance cannot open a second hook at the same time.
 
-## Kayıt biçimi
+## Log format
 
 ```
-===== session 2026-10-28 23:54:33  DESKTOP-X  pid=26840 clipboard=True
-[23:54:34] msedge.exe :: Inbox - Google Chrome
-hesap: samet<ENTER>
-[23:54:41] [CLIPBOARD] ornek pano icerigi: https://example.com/login?token=abc
-deneme@example.com<DEL><BACK><LEFT><F1>
-===== session end 2026-10-28 23:54:43 panel: durduruldu
+===== session 2026-10-29 00:02:21  DESKTOP-X  pid=4092 clipboard=True
+[00:02:27] msedge.exe :: Inbox - Google Chrome
+account: samet<ENTER>
+[00:02:41] [CLIPBOARD] sample clipboard text: https://example.com/login?token=abc
+demo@example.com<DEL><BACK><LEFT><F1>
+===== session end 2026-10-29 00:02:43 panel: stopped
 ```
 
-Yazdırılabilir karakterler olduğu gibi yazılır. Görünmez tuşlar işaretlenir (`<ENTER>`, `<TAB>`, `<BACK>`, `<DEL>`, `<LEFT>`, `<F5>`, `<NUM+>`, …), `Ctrl`+harf çiftleri `^C` biçiminde. `<ENTER>` yeni satır açar. Ön plan penceresi değiştiğinde ve boşluk sonrasında `[saat] uygulama :: başlık` başlığı düşülür, böylece her satır hedef uygulamaya atfedilebilir.
+Printable characters are written verbatim. Non-printing keys are marked (`<ENTER>`, `<TAB>`, `<BACK>`, `<DEL>`, `<LEFT>`, `<F5>`, `<NUM+>`, …), and `Ctrl`+letter pairs render as `^C`. `<ENTER>` starts a new line. Whenever the foreground window changes — and after an idle gap — a `[time] process :: title` header is written, so every line can be attributed to the application that received it.
 
-## Nasıl çalışıyor
+## How it works
 
-- **Kanca** — `SetWindowsHookExW(WH_KEYBOARD_LL, …)` kendi iş parçacığında kurulur ve `GetMessageW` döngüsü o iş parçacığında döner (geri çağrı yalnızca kancayı kuran iş parçacığında tetiklenir). Kapatma, o iş parçacığına `WM_QUIT` gönderip kancayı çözer; `Engine` bu yüzden yeniden başlatılabilir.
-- **Çeviri** — ön plandaki iş parçacığının düzeniyle `ToUnicodeEx(vk, scan, keyState, …)`. Tuş durumu `GetAsyncKeyState`/`GetKeyState`'ten (Shift, Ctrl, Alt, CapsLock, NumLock) kurulur; düşük seviye kancada `GetKeyboardState` güvenilir değildir. `ToUnicodeEx` `-1` dönerse ölü tuş saklanır ve bir sonraki tuştan önce tekrar oynatılır, böylece aksan birleşimleri doğru çıkar.
-- **Bağlam** — her tuşta `GetForegroundWindow` → `GetWindowTextW` → `QueryFullProcessImageNameW`. Başlık yalnızca pencere gerçekten değişince yazılır.
-- **Pano** — `GetClipboardSequenceNumber` değişimini izleyen iş parçacığı, `OpenClipboard` kilitlenmelerine karşı tekrar deneyerek `CF_UNICODETEXT` okur.
-- **Sağlamlık** — kanca geri çağrısı tümüyle sarmalanmıştır (içinde kaçan istisna pompayı bozar); her yazımdan sonra `flush`, UTF-8, ekleme kipi.
-- **Panel** — tüm Tk çağrıları ana iş parçacığında; dosya 400 ms'de bir artımlı okunur (`Tail`), kesilme ve çok baytlı karakter bölünmesi tolere edilir.
+- **Hook** — `SetWindowsHookExW(WH_KEYBOARD_LL, …)` is installed on its own thread, which also runs the `GetMessageW` pump (the callback only fires on the thread that installed the hook). Shutdown posts `WM_QUIT` to that thread and unhooks, which is why `Engine` can be restarted.
+- **Translation** — `ToUnicodeEx(vk, scan, keyState, …)` with the layout of the foreground thread. The key-state array is built from `GetAsyncKeyState` / `GetKeyState` (Shift, Ctrl, Alt, CapsLock, NumLock), because `GetKeyboardState` is unreliable inside a low-level hook. A `ToUnicodeEx` return of `-1` marks a dead key; it is stored and replayed before the next keystroke so accented pairs compose correctly.
+- **Context** — on each key: `GetForegroundWindow` → `GetWindowTextW` → `QueryFullProcessImageNameW`. The header is only written when the window actually changes.
+- **Clipboard** — a polling thread watches `GetClipboardSequenceNumber`, then reads `CF_UNICODETEXT` under `OpenClipboard`, retrying the common lock races.
+- **Robustness** — the hook callback is fully wrapped (an escaping exception would destabilize the pump); every write is flushed, UTF-8, append-only.
+- **Panel** — all Tk calls happen on the main thread; the file is read incrementally every 400 ms (`Tail`), tolerating truncation and multi-byte characters split across reads.
 
-## Notlar
+## Notes
 
-- Kanca masaüstü/oturum başına çalışır. Gözlemlemek istediğiniz etkileşimli oturumda normal kullanıcı süreci olarak başlatın; hizmet (session 0) olarak çalıştırıldığında hiçbir tuş görmez.
-- UIPI, orta bütünlükteki bir sürecin yükseltilmiş pencerelere girdi göndermesini engeller; kanca tuşları yine de görür.
-- Kayıt düz metindir ve sınırsız büyür. `--duration` + zamanlanmış görev ya da panelden **Temizle** ile döndürün.
-- `--install` yalnızca `Run` değeri yazar; başka hiçbir şeyi değiştirmez. Doğrulama: `reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InputMonitor`.
+- The hook is per desktop/session. Start it inside the interactive session you want to observe, as a normal user process; from a service (session 0) it sees no keystrokes.
+- UIPI blocks a medium-integrity process from sending input to elevated windows, but the hook still sees the keystrokes.
+- The log is plaintext and grows unbounded. Rotate it with `--duration` plus a scheduled task, or use **Clear** in the panel.
+- `--install` writes only the `Run` value; nothing else is modified. Verify with `reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InputMonitor`.
